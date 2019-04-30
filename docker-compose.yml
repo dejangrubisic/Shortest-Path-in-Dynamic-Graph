@@ -1,0 +1,174 @@
+version: "3"
+
+services:
+
+  gen: 
+    build: ./gen 
+    environment:
+      HDFS_HOST: http://namenode:50070
+      KAFKA_HOST: kafka:9092
+      K_TOPIC_EDGES: new_edges      
+      #privremeno
+      K_TOPIC_RESULT: result
+      # HDFS_HOST: http://namenode:50070
+    container_name: gen
+    depends_on: 
+      - kafka
+      - hdfs_writer
+
+
+  plot: 
+    build: ./plot
+    ports:
+      - "9998:99"
+    environment:
+      HDFS_HOST: http://namenode:50070
+      KAFKA_HOST: kafka:9092
+      K_TOPIC_EDGES: new_edges      
+      K_TOPIC_RESULT: result
+      #spark-master
+      K_TOPIC_START: start
+      # HDFS_HOST: http://namenode:50070
+    container_name: plot
+    depends_on: 
+      - kafka
+      - gen
+      - hdfs_writer
+  
+  hdfs_writer:
+    build: ./hdfs_writer
+    depends_on:
+      - namenode
+      - datanode
+    environment:
+      HDFS_HOST: http://namenode:50070
+      KAFKA_HOST: kafka:9092
+      K_TOPIC_EDGES: new_edges      
+    container_name: hdfs_writer
+
+
+  zookeeper:
+    image: wurstmeister/zookeeper
+    ports:
+      - "2181:2181"
+  kafka:
+    image: wurstmeister/kafka:latest
+    ports:
+      # - "9092:9092"
+      - "9094:9094"
+    environment:
+      HOSTNAME_COMMAND: "docker info | grep ^Name: | cut -d' ' -f 2"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INSIDE:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: INSIDE://:9092,OUTSIDE://_{HOSTNAME_COMMAND}:9094
+      KAFKA_LISTENERS: INSIDE://:9092,OUTSIDE://:9094
+      KAFKA_INTER_BROKER_LISTENER_NAME: INSIDE
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - zookeeper
+
+
+  namenode:
+    image: bde2020/hadoop-namenode:1.1.0-hadoop2.8-java8                        
+    volumes:
+      - ./data/namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=shortest_path
+      - HDFS_HOST=http://namenode:50070
+    env_file:
+      - ./hadoop.env
+    ports:
+      - 50070:50070
+
+  datanode:
+    image: bde2020/hadoop-datanode:1.1.0-hadoop2.8-java8
+    depends_on: 
+      - namenode
+    volumes:
+      - ./data/datanode:/hadoop/dfs/data
+    env_file:
+      - ./hadoop.env
+    # ports:
+    #  - 50075:50075
+
+  # datanode1:
+  #   image: bde2020/hadoop-datanode:1.1.0-hadoop2.8-java8
+  #   depends_on: 
+  #     - namenode
+  #   volumes:
+  #     - ./data/datanode1:/hadoop/dfs/data
+  #   env_file:
+  #     - ./hadoop.env
+  # datanode2:
+  #   image: bde2020/hadoop-datanode:1.1.0-hadoop2.8-java8
+  #   depends_on: 
+  #     - namenode
+  #   volumes:
+  #     - ./data/datanode2:/hadoop/dfs/data
+  #   env_file:
+  #     - ./hadoop.env
+
+  
+  spark-master:
+    build: ./spark_project
+    container_name: spark-master
+    environment:
+      HDFS_HOST: http://namenode:50070
+      KAFKA_HOST: kafka:9092
+      K_TOPIC_EDGES: new_edges      
+      K_TOPIC_RESULT: result
+      K_TOPIC_START: start
+    depends_on:
+      - namenode 
+      - datanode
+      - hdfs_writer
+      # - datanode1
+      # - datanode2
+    ports:
+      - 8080:85
+      - 7077:7077
+    env_file:
+      - ./hadoop.env
+
+
+  spark-worker1:
+    image: bde2020/spark-worker:2.1.0-hadoop2.8-hive-java8
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MASTER=spark://spark-master:7077
+    ports:
+      - 8081:8081
+    env_file:
+      - ./hadoop.env
+  # spark-worker2:
+  #   image: bde2020/spark-worker:2.1.0-hadoop2.8-hive-java8
+  #   depends_on:
+  #     - spark-master
+  #   environment:
+  #     - SPARK_MASTER=spark://spark-master:7077
+  #   ports:
+  #     - 8082:8081
+  #   env_file:
+  #     - ./hadoop.env
+  # spark-worker3:
+  #   image: bde2020/spark-worker:2.1.0-hadoop2.8-hive-java8
+  #   depends_on:
+  #     - spark-master
+  #   environment:
+  #     - SPARK_MASTER=spark://spark-master:7077
+  #   ports:
+  #     - 8083:8081
+  #   env_file:
+  #     - ./hadoop.env
+
+  spark-notebook:
+    image: bde2020/spark-notebook:2.1.0-hadoop2.8-hive
+    container_name: spark-notebook
+    env_file:
+      - ./hadoop.env
+    ports:
+      - 9001:9001
+
