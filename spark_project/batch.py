@@ -98,7 +98,7 @@ def Map(node_id, node):
     # = node_in[0]
     #node = node_in[1]
  
-    neighbors_list = []
+    neighbors_dict = dict()
 
     # front propagation
     dist = node["path_start"][0][0]
@@ -110,9 +110,10 @@ def Map(node_id, node):
                         for p in node["path_start"] if p[0]!=sys.maxint 
                         ]
              
-            neighbors_list.append( ( unicode( neighbor["id"] ), \
-                                    {"path_start": path, "path_end": [ (sys.maxint, "") ] }  ))
-    
+            neighbors_dict[ unicode( neighbor["id"]) ] = {"path_start": path, "path_end": list() }
+            
+
+
     dist = node["path_end"][0][0]
     if dist != sys.maxint:
         
@@ -123,30 +124,38 @@ def Map(node_id, node):
                         for p in node["path_end"] if p[0]!=sys.maxint 
                         ]
 
-            neighbors_list.append( ( unicode( neighbor["id"] ), \
-                                    {"path_end": path, "path_start": [ (sys.maxint, "") ] }  ))
+            if unicode(neighbor["id"]) in neighbors_dict:
+                neighbors_dict[ unicode(neighbor["id"]) ]["path_end"] = path                
+            else:
+                neighbors_dict[ unicode( neighbor["id"]) ] = {"path_start": list(), "path_end": path }
+    
 
-    # print "\n", node_id, " Neighbors list ", neighbors_list,"\n"
+    # print "\n", node_id, " Neighbors list ", neighbors_dict.items(),"\n"
 
-    return neighbors_list
+    return neighbors_dict.items()
+
+
+def ReduceNeighbors(x, y):
+    d = dict()
+    
+    d['path_start'] = list(set(x['path_start'] + y['path_start']) )
+    d['path_end'] = list(set(x['path_end'] + y['path_end']) )
+
+    return d
+
 
     
-def Reduce(a, b):
-    # both a and b has filled every atribute
-    ''' dict= lon, lat, neighbors_in, neighbors_out, path_start, path_end'''
-    if a == None:
-        return b
-    if b == None:
-        return a
+def UpdateGraph(node, new_info):
+    # node - data from rdd --> dict= lon, lat, neighbors_in, neighbors_out, path_start, path_end
+    # b - new_info (neighbors_list) --> dict = {path_start, path_end}
+    
+    if new_info == None:
+        return node
 
-    a_path_start = a["path_start"]
-    a_path_end = a["path_end"]
-
-    a.update(b)
-    a["path_start"] += b["path_start"]
-    a["path_end"] += b["path_end"]
-
-    return a
+    for key in new_info.keys():
+        if new_info[key] != []:
+            node[key] = list(set(node[key] + new_info[key]) )
+    return node
 
 
 def meregeWithBase(a, b):
@@ -193,9 +202,9 @@ def getResults(path_start, current_id, path_end, display=False):
     return total_weight, str(total_weight)+" "+path_start[1] + str(current_id) + path_end[1] 
 
 def sortPaths(node_id, node):
-    
-    node["path_start"] = sorted( set(node["path_start"]), key = lambda x: x[0])[:3]
-    node["path_end"]   = sorted( set(node["path_end"]), key = lambda x: x[0])[:3]
+        
+    node["path_start"] = sorted( node["path_start"], key = lambda x: x[0])[:3]
+    node["path_end"]   = sorted( node["path_end"], key = lambda x: x[0])[:3]
     
     return (node_id, node) 
 
@@ -322,24 +331,29 @@ def main(rt_process_id, start_node_ids=None, end_node_ids=None, steps=5):
 
         
 
-        for i in range(steps):
-            # Chackpoint - Kafka
-            start_end_nodes = getNodesKafka(consumer)
-            if start_end_nodes != None: break
 
-            # FIRST MAP
+
+
+        for i in range(steps):
+
+            # Find neighbors of connected nodes to start or end
             neighbors_list = rdd.flatMap(lambda x: Map( x[0], x[1] ) )
 
-            # Imamo samo one koji su poslednji iterirani #pazi Zavisi da li imas Left ili Right JOIN
-            rdd =  rdd.leftOuterJoin(neighbors_list)
+            # Reduce neighbors in form (id, path_start: list(), path_end: list() )
+            neighbors_list = neighbors_list.reduceByKey(lambda x, y: ReduceNeighbors(x, y) )
+
+            # Add neighbors to Base RDD
+            rdd =  rdd.leftOuterJoin(neighbors_list)            
+
+            # Update RDD 
+            rdd = rdd.map(lambda x: ( x[0], UpdateGraph(x[1][0], x[1][1]) )  )                    
             
-                                            #  x [0]-key, x[1]-tuple(orig baza, new_node) 
-            rdd = rdd.map(lambda x: (x[0], meregeWithBase( x[1][0], x[1][1] )  ) )
-
-            rdd = rdd.reduceByKey(lambda x, y: Reduce(x, y) )        
-
+            # Sort path_start and path_end by total_cost
             rdd = rdd.map(lambda x: sortPaths( x[0], x[1] ) )
 
+			# Chackpoint - Kafka
+            start_end_nodes = getNodesKafka(consumer)
+            if start_end_nodes != None: break
 
         if start_end_nodes != None:             
             continue

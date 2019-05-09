@@ -32,5 +32,5 @@ RUN wget http://central.maven.org/maven2/org/apache/spark/spark-streaming-kafka-
 # RUN apt-get install nano -y
 # RUN apt-get install netcat -y
 
-CMD ["python", "main.py"]
+# CMD ["python", "main.py"]
 
