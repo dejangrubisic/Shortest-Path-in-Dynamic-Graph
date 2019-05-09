@@ -97,7 +97,30 @@ def findEdge(path, b_new_edge):
     
     return (path[0], path[1])
 
+def sendBestPath(paths_info, producer):
 
+                paths_info = paths_info.sortByKey(ascending=True) 
+                best_paths = paths_info.map(lambda x: (x[0], num2str(x[0], x[1] )) ).take(3)#.collect()
+            
+                print ("Best Paths: \n")
+                for x in best_paths:
+                    print (x, "\n")
+
+                msg = best_paths[0][1]
+
+
+                if msg != "":
+                    print ("\n\n\n SEND___RESULT: ", msg, "\n\n\n" )
+                    producer.send( TOPIC_RESULT, value=msg, key=msg )
+
+                
+                globals()['paths_info'] = paths_info
+
+def updateEdge(rdd, new_edge, paths_info):            
+    b_new_edge = rdd.context.broadcast(new_edge)            
+    paths_info = paths_info.map(lambda x: findEdge(x, b_new_edge) )
+
+    return paths_info        
 
 def main(host="localhost", port="kafka:9092", checkpoint="./checkpoint", output="./output"):
 
@@ -127,8 +150,8 @@ def main(host="localhost", port="kafka:9092", checkpoint="./checkpoint", output=
     edges.pprint()
     
     words = edges.flatMap(lambda line: line[0].split(" "))
-
-
+    
+    globals()['buffer_edges'] = list()
     print (" Wait for signal... \n")   
     signal.pause()
     time.sleep(1)
@@ -136,7 +159,7 @@ def main(host="localhost", port="kafka:9092", checkpoint="./checkpoint", output=
 
     def process(time, rdd):
         global msg
-        # global read_results
+        new_results = False
 
         print ("********************** REAL-TIME Process *************************\n\n")  
         
@@ -145,7 +168,14 @@ def main(host="localhost", port="kafka:9092", checkpoint="./checkpoint", output=
         print("READ_RESULTS: ",  globals()['read_results'])
         if  globals()['read_results'] == True:
             print("NEW PATHS ++++ \n")
+            
+            # azuriraj paths_info sa podacima pristiglim u toku Batch obrade
             paths_info = getBestPaths(rdd.context)
+            for buffered_edge in globals()['buffer_edges']:
+                paths_info = updateEdge(rdd, buffered_edge, paths_info)
+            
+            sendBestPath(paths_info, producer)
+            globals()['buffer_edges'] = list()
             globals()['read_results'] = False
         else:
             paths_info = globals()['paths_info']
@@ -154,30 +184,16 @@ def main(host="localhost", port="kafka:9092", checkpoint="./checkpoint", output=
         print (new_edge, " ",  len(new_edge) )
         
 
-        if len( new_edge) != 0 or paths_info == None :
-        # if False:               
+        if len(new_edge) != 0 :
+            
             new_edge = [ int(new_edge[0]), int(new_edge[1]), int(new_edge[2]) ]
-
-            b_new_edge = rdd.context.broadcast(new_edge)
-
-             
-            paths_info = paths_info.map(lambda x: findEdge(x, b_new_edge) ).sortByKey(ascending=True) 
-
-            best_paths = paths_info.map(lambda x: (x[0], num2str(x[0], x[1] )) ).take(3)#.collect()
-        
-            print ("Best Paths: \n")
-            for x in best_paths:
-                print (x, "\n")
-
-            msg = best_paths[0][1]
-
-
-            if msg != "":
-                print ("\n\n\n SEND___RESULT: ", msg, "\n\n\n" )
-                producer.send( TOPIC_RESULT, value=msg, key=msg )
+            globals()['buffer_edges'].append(new_edge)
 
             
-            globals()['paths_info'] = paths_info
+            paths_info = updateEdge(rdd, new_edge, paths_info)
+            
+            sendBestPath(paths_info, producer)
+            
 
                 
             

@@ -552,6 +552,7 @@ def update_graph(n_intervals):
 
     total_cost, path, new_edges = generator(consumer)    
 
+
     if len(new_edges) > 0:  
         fig_data, fig_arrows = newEdges(fig_data=fig_data, fig_arrows=fig_arrows, edges=new_edges)
     

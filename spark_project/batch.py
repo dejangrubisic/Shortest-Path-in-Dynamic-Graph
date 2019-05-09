@@ -3,7 +3,6 @@ from pyspark import SparkContext, SparkConf
 from pyspark.sql import SparkSession
 
 from kafka import KafkaConsumer
-from kafka import KafkaProducer
 import kafka.errors
 
 from hdfs import InsecureClient
@@ -39,16 +38,6 @@ def connectKafkaConsumer():
         except kafka.errors.NoBrokersAvailable as e:
             print(e)
             sleep(3)
-
-def conectKafkaProducer():
-    while True:
-        try:
-            producer = KafkaProducer(bootstrap_servers=os.environ['KAFKA_HOST'])
-            print("PRODUCER: Connected to Kafka!")
-            return producer
-        except kafka.errors.NoBrokersAvailable as e:
-            print(e)
-            time.sleep(3)
 
 def connect_to_hdfs():
     while True:
@@ -286,7 +275,6 @@ def main(rt_process_id, start_node_ids=None, end_node_ids=None, steps=5):
 
     hdfs = connect_to_hdfs()
     consumer = connectKafkaConsumer()
-    producer = conectKafkaProducer()
     
     conf = SparkConf().setAppName("Shortest_Path").setMaster("local")
     sc = SparkContext(conf=conf)
@@ -369,7 +357,6 @@ def main(rt_process_id, start_node_ids=None, end_node_ids=None, steps=5):
         if len(res) != 0:
             msg = res[0]        
             print "\n SHORTEST: ", msg, "\n"            
-            producer.send( TOPIC_RESULT, value=msg, key=msg )
 
             print "ALL_RESULTS", type(res)
             for r in res:

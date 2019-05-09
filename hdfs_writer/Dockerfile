@@ -1,6 +1,6 @@
 FROM python:2.7-slim
 WORKDIR /hdfs_writer
-COPY . /hdfs_writer
+COPY . .
 
 RUN pip install hdfs
 RUN pip install kafka-python

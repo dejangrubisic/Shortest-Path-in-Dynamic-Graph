@@ -45,7 +45,8 @@ services:
       KAFKA_HOST: kafka:9092
       K_TOPIC_EDGES: new_edges      
     container_name: hdfs_writer
-
+    depends_on: 
+      - kafka
 
   zookeeper:
     image: wurstmeister/zookeeper
@@ -124,6 +125,7 @@ services:
       - namenode 
       - datanode
       - hdfs_writer
+      - gen
       # - datanode1
       # - datanode2
     ports:
@@ -164,11 +166,11 @@ services:
   #   env_file:
   #     - ./hadoop.env
 
-  spark-notebook:
-    image: bde2020/spark-notebook:2.1.0-hadoop2.8-hive
-    container_name: spark-notebook
-    env_file:
-      - ./hadoop.env
-    ports:
-      - 9001:9001
+  # spark-notebook:
+  #   image: bde2020/spark-notebook:2.1.0-hadoop2.8-hive
+  #   container_name: spark-notebook
+  #   env_file:
+  #     - ./hadoop.env
+  #   ports:
+  #     - 9001:9001
 

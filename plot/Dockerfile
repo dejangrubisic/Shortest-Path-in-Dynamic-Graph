@@ -24,7 +24,8 @@ EXPOSE 99
 RUN pip install hdfs
 RUN pip install kafka-python
 
-RUN pip install pandas
+# RUN pip install pandas
+RUN pip install numpy
 RUN pip install dash
 
 
